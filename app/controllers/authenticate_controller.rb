@@ -4,11 +4,11 @@ class AuthenticateController < ApplicationController
 
   AUTHN_RESOURCE_PREFIX = "conjur/authn-"
 
-  def index 
+  def index
     authenticators = {
       # Installed authenticator plugins
       installed: installed_authenticators.keys.sort,
-    
+
       # Authenticator webservices created in policy
       configured: configured_authenticators.sort,
 
@@ -20,14 +20,7 @@ class AuthenticateController < ApplicationController
   end
 
   def authenticate
-    authentication_token = ::Authentication::Strategy.new(
-      authenticators: installed_authenticators,
-      audit_log: ::Authentication::AuditLog,
-      security: nil,
-      env: ENV,
-      role_cls: ::Role,
-      token_factory: TokenFactory.new
-    ).conjur_token(
+    authentication_token = new_authentication_strategy.conjur_token(
       ::Authentication::Strategy::Input.new(
         authenticator_name: params[:authenticator],
         service_id:         params[:service_id],
@@ -40,17 +33,37 @@ class AuthenticateController < ApplicationController
     )
     render json: authentication_token
   rescue => e
-    logger.debug("Authentication Error: #{e.message}")
-    e.backtrace.each do |line|
-      logger.debug(line)
-    end
-    raise Unauthorized
+    handle_authentication_error(e)
   end
+
+  def authenticate_oidc
+    authentication_token = new_authentication_strategy.conjur_token_oidc(
+      ::Authentication::Strategy::Input.new(
+        authenticator_name: 'authn-oidc',
+        service_id:         params[:service_id],
+        account:            params[:account],
+        username:           nil,
+        password:           nil, #TODO: the body will contain info about OpenID
+        origin:             request.ip,
+        request:            request
+      )
+    )
+    render json: authentication_token
+  rescue => e
+    handle_authentication_error(e)
+  end
+
 
   def k8s_inject_client_cert
     ::Authentication::AuthnK8s::Authenticator.new(env: ENV).inject_client_cert(params, request)
     head :ok
   rescue => e
+    handle_authentication_error(e)
+  end
+
+  private
+
+  def handle_authentication_error(e)
     logger.debug("Authentication Error: #{e.message}")
     e.backtrace.each do |line|
       logger.debug(line)
@@ -58,7 +71,16 @@ class AuthenticateController < ApplicationController
     raise Unauthorized
   end
 
-  private
+  def new_authentication_strategy
+    ::Authentication::Strategy.new(
+      authenticators: installed_authenticators,
+      audit_log: ::Authentication::AuditLog,
+      security: nil,
+      env: ENV,
+      role_cls: ::Role,
+      token_factory: TokenFactory.new
+    )
+  end
 
   def installed_authenticators
     @installed_authenticators ||= ::Authentication::InstalledAuthenticators.new(ENV)

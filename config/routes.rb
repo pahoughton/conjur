@@ -25,9 +25,11 @@ Rails.application.routes.draw do
       put  '/authn/:account/api_key'  => 'credentials#rotate_api_key'
 
       constraints authenticator: /authn-?[^\/]*/, id: /[^\/\?]+/ do
+        post '/authn-oidc(/:service_id)/:account/authenticate' => 'authenticate#authenticate_oidc'
+
         post '/:authenticator(/:service_id)/:account/:id/authenticate' =>
           'authenticate#authenticate'
-        post '/authn-oicd(/:service_id)/:account/authenticate' => 'authenticate#authenticate'
+
         post '/authn-k8s/:service_id/inject_client_cert' => 'authenticate#k8s_inject_client_cert'
       end
 
@@ -38,7 +40,7 @@ Rails.application.routes.draw do
       post    "/roles/:account/:kind/*identifier" => "roles#add_member", :constraints => QueryParameterActionRecognizer.new("members")
       delete  "/roles/:account/:kind/*identifier" => "roles#delete_member", :constraints => QueryParameterActionRecognizer.new("members")
       get     "/roles/:account/:kind/*identifier" => "roles#show"
-     
+
 
       get     "/resources/:account/:kind/*identifier" => 'resources#check_permission', :constraints => QueryParameterActionRecognizer.new("check")
       get     "/resources/:account/:kind/*identifier" => 'resources#permitted_roles', :constraints => QueryParameterActionRecognizer.new("permitted_roles")
@@ -47,7 +49,7 @@ Rails.application.routes.draw do
       get     "/resources/:account"                   => "resources#index"
       get     "/resources"                            => "resources#index"
 
-      # NOTE: the order of these routes matters: we need the expire 
+      # NOTE: the order of these routes matters: we need the expire
       #       route to come first.
       post    "/secrets/:account/:kind/*identifier" => "secrets#expire",
         :constraints => QueryParameterActionRecognizer.new("expirations")
